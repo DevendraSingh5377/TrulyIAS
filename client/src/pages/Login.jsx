@@ -3,121 +3,18 @@ import { Link, useNavigate } from "react-router-dom";
 import api from "../api";
 
 function Login() {
-  const googleButtonRef = useRef(null);
-  const handleGoogleLogin = async (response) => {
-  setError("");
-  setLoading(true);
-
-  try {
-    const result = await api.post("/auth/google", {
-      credential: response.credential,
-    });
-
-    const user = result.data.user;
-
- 
-const handleGoogleLogin = async (response) => {
-  setError("");
-  setLoading(true);
-
-  try {
-    const result = await api.post("/auth/google", {
-      credential: response.credential,
-    });
-
-    // Google login is successful
-    // Directly go to profile
-    navigate("/profile");
-  } catch (error) {
-    console.error("Google login error:", error);
-
-    setError(
-      error.response?.data?.message ||
-        "Google login failed. Please try again."
-    );
-  } finally {
-    setLoading(false);
-  }
-};
-
-
-  } catch (error) {
-    console.error("Google login error:", error);
-
-    setError(
-      error.response?.data?.message ||
-        "Google login failed. Please try again."
-    );
-  } finally {
-    setLoading(false);
-  }
-};
-
-useEffect(() => {
-  const clientId =
-    import.meta.env.VITE_GOOGLE_CLIENT_ID;
-
-  console.log("Google Client ID:", clientId);
-
-  if (!clientId) {
-    console.error(
-      "Google Client ID is missing. Check client/.env"
-    );
-    return;
-  }
-
-  const initializeGoogle = () => {
-    if (
-      window.google &&
-      googleButtonRef.current
-    ) {
-      window.google.accounts.id.initialize({
-        client_id: clientId,
-        callback: handleGoogleLogin,
-      });
-
-      window.google.accounts.id.renderButton(
-        googleButtonRef.current,
-        {
-          theme: "outline",
-          size: "large",
-          width: 350,
-          text: "continue_with",
-          shape: "rectangular",
-        }
-      );
-    }
-  };
-
-  if (window.google) {
-    initializeGoogle();
-  } else {
-    window.addEventListener(
-      "load",
-      initializeGoogle
-    );
-  }
-
-  return () => {
-    window.removeEventListener(
-      "load",
-      initializeGoogle
-    );
-  };
-}, []);
-
-
   const navigate = useNavigate();
+  const googleButtonRef = useRef(null);
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
   const [error, setError] = useState("");
 
+  // Handle standard email/password login: step 1 -> proceed to OTP verification
   const handleLogin = async (e) => {
     e.preventDefault();
-
     setError("");
     setLoading(true);
 
@@ -127,176 +24,169 @@ useEffect(() => {
         password,
       });
 
-      const user = response.data.user;
+      // Save temporary 2FA token for OTP verification
+      if (response.data.tempToken) {
+        sessionStorage.setItem("trulyias_temp_token", response.data.tempToken);
+      }
 
-   js
-const sendEmailOtp = async (req, res) => {
-  try {
-    const user = await User.findById(req.user._id);
-
-    if (!user) {
-      return res.status(404).json({
-        message: "User not found",
-      });
-    }
-
-    // Generate a fresh OTP every time
-    const otp = generateOtp();
-
-    user.emailOtp = otp;
-    user.emailOtpExpires = new Date(
-      Date.now() + 10 * 60 * 1000
-    );
-
-    await user.save();
-
-    await sendEmail({
-      to: user.email,
-      subject: "Your TrulyIAS Email Verification OTP",
-      html: `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 30px; background: #f5f9ff;">
-          <div style="background: white; padding: 30px; border-radius: 16px; text-align: center;">
-
-            <h1 style="color: #2563eb;">
-              TrulyIAS
-            </h1>
-
-            <h2>
-              Email Verification
-            </h2>
-
-            <p>
-              Hello ${user.name},
-            </p>
-
-            <p>
-              Your verification OTP is:
-            </p>
-
-            <div style="font-size: 34px; font-weight: bold; letter-spacing: 8px; color: #2563eb; margin: 25px 0;">
-              ${otp}
-            </div>
-
-            <p>
-              This OTP will expire in 10 minutes.
-            </p>
-
-          </div>
-        </div>
-      `,
-    });
-
-    return res.status(200).json({
-      message: "Email OTP sent successfully",
-    });
-
-  } catch (error) {
-    console.error(
-      "Send email OTP error:",
-      error
-    );
-
-    return res.status(500).json({
-      message: "Unable to send email OTP",
-    });
-  }
-};
-
-
-    } catch (error) {
-      console.error("Login error:", error);
-
+      // Navigate to OTP selection screen
+      navigate("/verification", { state: { user: response.data.user } });
+    } catch (err) {
+      console.error("Login error:", err);
       setError(
-        error.response?.data?.message ||
-          "Login failed. Please try again."
+        err.response?.data?.message ||
+          "Invalid email or password. Please try again."
       );
     } finally {
       setLoading(false);
     }
   };
 
+  // Handle Google Login: Google verifies ID directly -> NO OTP needed, straight to profile
+  const handleGoogleLogin = async (response) => {
+    setError("");
+    setGoogleLoading(true);
+
+    try {
+      await api.post("/auth/google", {
+        credential: response.credential,
+      });
+
+      // Clear any pending temp tokens
+      sessionStorage.removeItem("trulyias_temp_token");
+
+      // Directly open profile page on selecting Google ID
+      navigate("/profile");
+    } catch (err) {
+      console.error("Google login error:", err);
+      setError(
+        err.response?.data?.message ||
+          "Google login failed. Please try again."
+      );
+    } finally {
+      setGoogleLoading(false);
+    }
+  };
+
+  // Initialize Google Sign-In button
+  useEffect(() => {
+    const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+
+    if (!clientId) {
+      console.warn("Google Client ID is missing. Check client/.env");
+      return;
+    }
+
+    let intervalId = null;
+
+    const renderGoogleButton = () => {
+      if (window.google?.accounts?.id && googleButtonRef.current) {
+        googleButtonRef.current.innerHTML = "";
+
+        window.google.accounts.id.initialize({
+          client_id: clientId,
+          callback: handleGoogleLogin,
+        });
+
+        window.google.accounts.id.renderButton(googleButtonRef.current, {
+          theme: "outline",
+          size: "large",
+          width: 350,
+          text: "continue_with",
+          shape: "rectangular",
+        });
+
+        return true;
+      }
+      return false;
+    };
+
+    if (!renderGoogleButton()) {
+      intervalId = setInterval(() => {
+        if (renderGoogleButton()) {
+          clearInterval(intervalId);
+        }
+      }, 300);
+    }
+
+    return () => {
+      if (intervalId) clearInterval(intervalId);
+    };
+  }, []);
+
   return (
     <div className="auth-page">
       <div className="auth-card">
-
-        <div className="logo-box">
-          T
+        <div className="brand-section">
+          <div className="brand-logo">T</div>
+          <h1>Welcome Back</h1>
+          <p>Login to continue to TrulyIAS</p>
         </div>
 
-        <h1>Welcome Back</h1>
-
-        <p className="auth-subtitle">
-          Login to continue to TrulyIAS
-        </p>
-
-        {error && (
-          <div className="error-message">
-            {error}
+        {error && <div className="error-message">{error}</div>}
+        {googleLoading && (
+          <div className="selected-method">
+            Signing in with Google... Redirecting to Profile...
           </div>
         )}
 
         <form onSubmit={handleLogin}>
-
           <div className="input-group">
-            <label>Email</label>
-
+            <label htmlFor="login-email">Email Address</label>
             <input
+              id="login-email"
               type="email"
               placeholder="Enter your email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
+              autoComplete="email"
               required
             />
           </div>
 
           <div className="input-group">
-            <label>Password</label>
-
+            <label htmlFor="login-password">Password</label>
             <input
+              id="login-password"
               type="password"
               placeholder="Enter your password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
+              autoComplete="current-password"
               required
             />
           </div>
 
           <div className="forgot-password">
-            <Link to="/forgot-password">
-              Forgot Password?
-            </Link>
+            <Link to="/forgot-password">Forgot Password?</Link>
           </div>
 
           <button
             type="submit"
             className="primary-btn"
-            disabled={loading}
+            disabled={loading || googleLoading}
           >
-            {loading ? "Logging in..." : "Login"}
+            {loading ? "Verifying..." : "Login"}
           </button>
-
         </form>
 
         <div className="divider">
           <span>OR</span>
         </div>
 
-     <div
-  ref={googleButtonRef}
-  className="google-login-container"
-></div>
+        <div
+          ref={googleButtonRef}
+          className="google-login-container"
+          style={{ display: "flex", justifyContent: "center", minHeight: "44px" }}
+        ></div>
 
-        <p className="bottom-text">
-          Don't have an account?{" "}
-          <Link to="/register">
-            Create Account
-          </Link>
+        <p className="switch-text">
+          Don't have an account?
+          <Link to="/register">Create Account</Link>
         </p>
-
       </div>
     </div>
   );
 }
 
 export default Login;
-

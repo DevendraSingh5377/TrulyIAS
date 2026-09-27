@@ -5,4 +5,12 @@ const api = axios.create({
   withCredentials: true,
 });
 
+api.interceptors.request.use((config) => {
+  const tempToken = sessionStorage.getItem("trulyias_temp_token");
+  if (tempToken) {
+    config.headers["x-temp-token"] = tempToken;
+  }
+  return config;
+});
+
 export default api;
