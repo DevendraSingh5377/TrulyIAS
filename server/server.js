@@ -17,38 +17,12 @@ connectDB();
 
 const app = express();
 
-// Dynamically handle allowed origins, strip trailing slashes, and handle preflight requests
-const allowedOrigins = [
-  process.env.CLIENT_URL,
-  "https://trulyias-1.onrender.com",
-  "http://localhost:5173",
-  "http://localhost:3000",
-]
-  .filter(Boolean)
-  .map((origin) => origin.replace(/\/$/, "")); // Strip trailing slashes automatically
-
-const corsOptions = {
-  origin: (origin, callback) => {
-    // Allow requests with no origin (like mobile apps, Postman, or server-to-server redirects)
-    if (!origin) return callback(null, true);
-
-    const cleanOrigin = origin.replace(/\/$/, "");
-    if (allowedOrigins.includes(cleanOrigin)) {
-      callback(null, true);
-    } else {
-      callback(new Error(`CORS error: Origin ${origin} not allowed by CORS policy.`));
-    }
-  },
-  credentials: true,
-  methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
-};
-
-// 1. Apply CORS middleware globally
-app.use(cors(corsOptions));
-
-// 2. Explicitly handle Preflight OPTIONS requests for all routes
-app.options("*", cors(corsOptions));
+app.use(
+  cors({
+    origin: process.env.CLIENT_URL || "http://localhost:5173",
+    credentials: true,
+  })
+);
 
 app.use(express.json());
 app.use(cookieParser());
