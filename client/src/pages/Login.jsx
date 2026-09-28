@@ -12,57 +12,82 @@ function Login() {
   const [googleLoading, setGoogleLoading] = useState(false);
   const [error, setError] = useState("");
 
-  // Handle standard email/password login: step 1 -> proceed to OTP verification
+  // Handle standard email/password login
   const handleLogin = async (e) => {
     e.preventDefault();
     setError("");
     setLoading(true);
 
     try {
-      const response = await api.post("/auth/login", {
-        email,
-        password,
-      });
+      const response = await api.post(
+        "/auth/login",
+        { email, password },
+        { withCredentials: true } // Ensure cookies/credentials are passed across origins
+      );
 
-      // Save temporary 2FA token for OTP verification
+      // Save token if returning JWT token in payload
+      if (response.data.token) {
+        localStorage.setItem("trulyias_token", response.data.token);
+      }
+
+      // Save temporary 2FA token for OTP verification if required
       if (response.data.tempToken) {
         sessionStorage.setItem("trulyias_temp_token", response.data.tempToken);
       }
 
-      // Navigate to OTP selection screen
-      navigate("/verification", { state: { user: response.data.user } });
+      // Navigate to OTP selection screen or directly to profile based on response
+      if (response.data.tempToken) {
+        navigate("/verification", { state: { user: response.data.user } });
+      } else {
+        navigate("/profile");
+      }
     } catch (err) {
       console.error("Login error:", err);
-      setError(
-        err.response?.data?.message ||
-          "Invalid email or password. Please try again."
-      );
+      if (err.response?.status === 401) {
+        setError("Invalid email or password. Please try again.");
+      } else {
+        setError(
+          err.response?.data?.message ||
+            "Unable to connect to server. Please try again later."
+        );
+      }
     } finally {
       setLoading(false);
     }
   };
 
-  // Handle Google Login: Google verifies ID directly -> NO OTP needed, straight to profile
+  // Handle Google Login
   const handleGoogleLogin = async (response) => {
     setError("");
     setGoogleLoading(true);
 
     try {
-      await api.post("/auth/google", {
-        credential: response.credential,
-      });
+      const res = await api.post(
+        "/auth/google",
+        { credential: response.credential },
+        { withCredentials: true } // Crucial for cross-domain OAuth session setting
+      );
+
+      // Store JWT token if returned by backend
+      if (res.data.token) {
+        localStorage.setItem("trulyias_token", res.data.token);
+      }
 
       // Clear any pending temp tokens
       sessionStorage.removeItem("trulyias_temp_token");
 
-      // Directly open profile page on selecting Google ID
+      // Redirect to profile on successful Google login
       navigate("/profile");
     } catch (err) {
       console.error("Google login error:", err);
-      setError(
-        err.response?.data?.message ||
-          "Google login failed. Please try again."
-      );
+      if (err.response?.status === 401) {
+        setError("Google authentication failed. Unauthorized user.");
+      } else {
+        setError(
+          err.response?.data?.message ||
+            "Google login failed. Please try again."
+        );
+      }
     } finally {
       setGoogleLoading(false);
     }
